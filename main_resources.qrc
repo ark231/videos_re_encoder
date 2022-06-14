@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/res/image">
+        <file alias="app_icon.ico">resources/app_icon.ico</file>
+        <file>resources/minus.png</file>
+        <file>resources/plus.png</file>
+    </qresource>
+</RCC>

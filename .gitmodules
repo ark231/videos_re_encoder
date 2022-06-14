@@ -1,0 +1,3 @@
+[submodule "3rdparty/qt_collapsible_section"]
+	path = 3rdparty/qt_collapsible_section
+	url = git@github.com:MichaelVoelkel/qt-collapsible-section.git
