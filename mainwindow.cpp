@@ -439,7 +439,8 @@ void MainWindow::check_loop_state_() {
 void MainWindow::cleanup_after_saving_() { TRACE }
 void MainWindow::start_saving_() {
     TRACE
-    process_ = new ProcessWidget(false, this, Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinMaxButtonsHint);
+    process_ = new ProcessWidget(false, ui_->listWidget_files->count(), this,
+                                 Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinMaxButtonsHint);
     process_->setWindowModality(Qt::WindowModal);
     process_->setAttribute(Qt::WA_DeleteOnClose, true);
     process_->show();
@@ -492,7 +493,11 @@ void MainWindow::register_output_path_() {
     TRACE
     auto path =
         QUrl::fromLocalFile(QDir{ui_->lineEdit_output_dir->text()}.filePath(ui_->lineEdit_output_filename->text()));
-    ui_->listWidget_files->currentItem()->setData(static_cast<int>(VideoDataRole::output_path), path);
+    auto current_item = ui_->listWidget_files->currentItem();
+    if (current_item == nullptr) {
+        return;
+    }
+    current_item->setData(static_cast<int>(VideoDataRole::output_path), path);
 }
 void MainWindow::save_result_() {
     TRACE
@@ -560,6 +565,9 @@ void MainWindow::change_preset_(QString name) {
         return;
     }
     auto current_item = ui_->listWidget_files->currentItem();
+    if (current_item == nullptr) {
+        return;
+    }
     auto source_video_info =
         current_item->data(static_cast<int>(VideoDataRole::source_video_info)).value<concat::VideoInfo>();
     auto current_output_info =
@@ -587,14 +595,21 @@ void MainWindow::change_preset_(QString name) {
 }
 void MainWindow::register_user_video_info_(concat::VideoInfo new_value) {
     TRACE
-    ui_->listWidget_files->currentItem()->setData(static_cast<int>(VideoDataRole::output_video_info),
-                                                  QVariant::fromValue(new_value));
+    auto current_item = ui_->listWidget_files->currentItem();
+    if (current_item == nullptr) {
+        return;
+    }
+    current_item->setData(static_cast<int>(VideoDataRole::output_video_info), QVariant::fromValue(new_value));
 }
 void MainWindow::register_user_output_path_() {
     TRACE
     auto new_value =
         QUrl::fromLocalFile(QDir{ui_->lineEdit_output_dir->text()}.filePath(ui_->lineEdit_output_filename->text()));
-    ui_->listWidget_files->currentItem()->setData(static_cast<int>(VideoDataRole::output_path), new_value);
+    auto current_item = ui_->listWidget_files->currentItem();
+    if (current_item == nullptr) {
+        return;
+    }
+    current_item->setData(static_cast<int>(VideoDataRole::output_path), new_value);
 }
 void MainWindow::sort_files_() {
     TRACE

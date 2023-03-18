@@ -7,6 +7,7 @@
 #include <QThread>
 #include <QWidget>
 #include <chrono>
+#include <ciso646>
 #include <functional>
 #include <list>
 #include <numeric>
@@ -22,7 +23,7 @@ class ProcessWidget : public QWidget {
     Q_OBJECT
 
    public:
-    explicit ProcessWidget(bool close_on_final = false, QWidget *parent = nullptr,
+    explicit ProcessWidget(bool close_on_final = false, int batch_count = 1, QWidget *parent = nullptr,
                            Qt::WindowFlags flags = Qt::WindowFlags());
     ~ProcessWidget();
     class ProgressParams {
@@ -144,6 +145,8 @@ class ProcessWidget : public QWidget {
     int current_stderr_tab_idx_ = -1;
     ProgressParams current_progress_params_;
     bool close_on_final_;
+    int batch_count_;
+    int num_finished_processes_ = 0;
    signals:
     void start_process(const QString &command, const QStringList &arguments, QIODeviceBase::OpenMode);
     void sigkill();

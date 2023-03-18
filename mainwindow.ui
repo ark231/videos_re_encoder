@@ -50,7 +50,14 @@ color: white;</string>
          </widget>
         </item>
         <item>
-         <widget class="QListWidget" name="listWidget_files"/>
+         <widget class="QListWidget" name="listWidget_files">
+          <property name="editTriggers">
+           <set>QAbstractItemView::NoEditTriggers</set>
+          </property>
+          <property name="movement">
+           <enum>QListView::Static</enum>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QPushButton" name="pushButton_remove_item">

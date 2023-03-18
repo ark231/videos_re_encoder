@@ -8,10 +8,16 @@
 
 #include "ui_processwidget.h"
 
-ProcessWidget::ProcessWidget(bool close_on_final, QWidget *parent, Qt::WindowFlags flags)
-    : QWidget(parent, flags), ui_(new Ui::ProcessWidget), close_on_final_(close_on_final) {
+ProcessWidget::ProcessWidget(bool close_on_final, int batch_count, QWidget *parent, Qt::WindowFlags flags)
+    : QWidget(parent, flags), ui_(new Ui::ProcessWidget), close_on_final_(close_on_final), batch_count_(batch_count) {
     ui_->setupUi(this);
     ui_->label_status->setText(tr("Executing nothing."));
+    ui_->progressBar_batch->setMaximum(batch_count);
+    ui_->label_batch_progress->setText(tr("%1/%2 finished").arg(0).arg(batch_count));
+    if (batch_count < 2) {
+        ui_->label_batch_progress->hide();
+        ui_->progressBar_batch->hide();
+    }
     thread_.start();
 }
 
@@ -121,6 +127,8 @@ void ProcessWidget::update_label_on_start_() {
     ui_->label_status->setText(tr("Executing %1 (pid=%2)").arg(process_->program()).arg(process_->processId()));
 }
 void ProcessWidget::update_label_on_finish_(int exit_code, QProcess::ExitStatus exit_status) {
+    ui_->progressBar_batch->setValue(++num_finished_processes_);
+    ui_->label_batch_progress->setText(tr("%1/%2 finished").arg(num_finished_processes_).arg(batch_count_));
     switch (exit_status) {
         case QProcess::NormalExit:
             ui_->label_status->setText(
@@ -181,8 +189,11 @@ void ProcessWidget::kill_process_() {
 void ProcessWidget::enable_closing_() {
     ui_->pushButton_close->setEnabled(true);
     ui_->pushButton_kill->setEnabled(false);
+    ui_->label_progress->hide();
     ui_->progressBar->hide();
     ui_->label_remaining->hide();
+    ui_->label_batch_progress->hide();
+    ui_->progressBar_batch->hide();
 }
 void ProcessWidget::disable_closing_() {
     ui_->pushButton_close->setEnabled(false);
