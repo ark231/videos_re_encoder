@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(video_re_encoder VERSION 0.1 LANGUAGES CXX)
+project(videos_re_encoder VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools MultimediaWidgets Gui)
 
-set(TS_FILES video_re_encoder_ja_JP.ts)
+set(TS_FILES videos_re_encoder_ja_JP.ts)
 
 set(PROJECT_SOURCES
     main.cpp
@@ -33,13 +33,12 @@ set(PROJECT_SOURCES
     videoinfodialog.cpp
     videoinfodialog.ui
     videoinfo.cpp
-    videoinfo_stream.cpp
     ${TS_FILES}
     main_resources.qrc
     $<$<PLATFORM_ID:Windows>:windows.rc>
 )
 
-qt_add_executable(video_re_encoder
+qt_add_executable(videos_re_encoder
     MANUAL_FINALIZATION
     ${PROJECT_SOURCES}
 )
@@ -65,7 +64,7 @@ CPMAddPackage(
 
 add_subdirectory(3rdparty)
 
-target_link_libraries(video_re_encoder PRIVATE
+target_link_libraries(videos_re_encoder PRIVATE
     Qt6::Widgets
     Qt6::MultimediaWidgets
     Qt6::Gui
@@ -75,14 +74,14 @@ target_link_libraries(video_re_encoder PRIVATE
     qt_collapsible_section
 )
 
-target_compile_definitions(video_re_encoder PRIVATE $<$<NOT:$<CONFIG:Debug>>:QT_NO_DEBUG_OUTPUT$<SEMICOLON>QT_NO_DEBUG>)
-target_compile_options(video_re_encoder PRIVATE
+target_compile_definitions(videos_re_encoder PRIVATE $<$<NOT:$<CONFIG:Debug>>:QT_NO_DEBUG_OUTPUT$<SEMICOLON>QT_NO_DEBUG>)
+target_compile_options(videos_re_encoder PRIVATE
     $<$<CXX_COMPILER_ID:Clang>:-Wall -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic>
     $<$<CXX_COMPILER_ID:GNU>:-pedantic -Wall -Wextra -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wnoexcept -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wstrict-null-sentinel -Wstrict-overflow=2 -Wswitch-default -Wundef -Wno-unused -Wunsafe-loop-optimizations -Wfloat-equal>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
 
-set_target_properties(video_re_encoder PROPERTIES
+set_target_properties(videos_re_encoder PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
@@ -90,4 +89,4 @@ set_target_properties(video_re_encoder PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
-qt_finalize_executable(video_re_encoder)
+qt_finalize_executable(videos_re_encoder)

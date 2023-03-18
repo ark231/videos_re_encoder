@@ -33,6 +33,8 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QVector>
+#include <QtDebug>
+#include <algorithm>
 #include <chrono>
 #include <ciso646>
 #include <cuchar>
@@ -98,9 +100,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui_(new Ui::MainW
     connect(ui_->actionsavefile_name_generator, &QAction::triggered, this, &MainWindow::select_savefile_name_plugin_);
     connect(ui_->actioneffective_period_of_cache, &QAction::triggered, this,
             &MainWindow::update_effective_period_of_cache_);
-    connect(ui_->actiondefault_video_info, &QAction::triggered, this, &MainWindow::edit_default_video_info_);
     connect(ui_->comboBox_preset, &QComboBox::currentTextChanged, this, &MainWindow::change_preset_);
     connect(ui_->actiondefault_preset, &QAction::triggered, this, &MainWindow::select_default_preset_);
+    connect(ui_->pushButton_clear, &QPushButton::clicked, ui_->listWidget_files, &QListWidget::clear);
+    connect(ui_->pushButton_remove_item, &QPushButton::clicked, [this] {
+        delete this->ui_->listWidget_files->takeItem(this->ui_->listWidget_files->currentRow());
+        if (this->ui_->listWidget_files->count() == 0) {
+            this->ui_->pushButton_remove_item->setEnabled(false);
+            this->ui_->timeEdit->setTime(QTime::fromMSecsSinceStartOfDay(0));
+        } else {
+            this->update_output_infos_();
+        }
+    });
+    connect(ui_->listWidget_files, &QListWidget::currentItemChanged, this, &MainWindow::update_output_infos_);
+    connect(ui_->videoInfoWidget, &VideoInfoWidget::info_changed, this, &MainWindow::register_user_video_info_);
+    connect(ui_->lineEdit_output_dir, &QLineEdit::textEdited, this, &MainWindow::register_user_output_path_);
+    connect(ui_->lineEdit_output_filename, &QLineEdit::textEdited, this, &MainWindow::register_user_output_path_);
+    connect(ui_->pushButton_sort, &QPushButton::clicked, this, &MainWindow::sort_files_);
+
     QDir settings_dir(QApplication::applicationDirPath() + "/settings");
     if (QDir().mkpath(settings_dir.absolutePath())) {  // QDir::mkpath() returns true even when path already exists
         settings_ = new QSettings(settings_dir.filePath("settings.ini"), QSettings::IniFormat);
@@ -109,8 +126,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui_(new Ui::MainW
             try {
                 presets_ = toml::parse(preset_path.toStdString());
             } catch (std::runtime_error &e) {
-                QMessageBox::warning(nullptr, tr("warning"),
-                                     tr("failed to load preset file (%1) info: \n%2").arg(preset_path).arg(e.what()));
+                qWarning() << tr("failed to load preset file (%1)info: \n%2").arg(preset_path).arg(e.what());
+                presets_ = toml::table();
             }
             for (const auto &[key, value] : presets_.as_table()) {
                 if (key == "VERSION") {
@@ -120,13 +137,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui_(new Ui::MainW
             }
         }
     }
-    current_preset_ = ui_->comboBox_preset->currentText();
-    cache_ = settings_->value("default_video_info").value<concat::VideoInfo>();
-    source_video_info_ = concat::VideoInfo::create_input_info();
-    auto default_preset =
-        settings_->value("default_preset").isNull() ? "custom" : settings_->value("default_preset").toString();
-    ui_->comboBox_preset->setCurrentText(default_preset == "custom" ? tr("custom") : default_preset);
-    change_preset_(ui_->comboBox_preset->currentText());
+    ui_->comboBox_preset->setCurrentText(settings_->value("default_preset", tr("custom")).toString());
 }
 
 MainWindow::~MainWindow() {
@@ -167,19 +178,6 @@ void MainWindow::update_effective_period_of_cache_() {
     }
 }
 
-void MainWindow::edit_default_video_info_() {
-    TRACE
-    bool confirmed = false;
-    auto default_video_info = settings_->value("default_video_info").value<concat::VideoInfo>();
-    auto default_input_video_info = retrieve_input_info(default_video_info);
-    auto video_info = VideoInfoDialog::get_video_info(
-        nullptr, tr("effective period of cache"), tr("enter effective period of cache"),
-        settings_->value("default_video_info").value<concat::VideoInfo>(), default_input_video_info, &confirmed);
-    if (confirmed) {
-        settings_->setValue("default_video_info", QVariant::fromValue(video_info));
-    }
-}
-
 void MainWindow::open_video_() {
     TRACE
     auto videodirs = QStandardPaths::standardLocations(QStandardPaths::MoviesLocation);
@@ -187,25 +185,27 @@ void MainWindow::open_video_() {
     if (videodir.isEmpty() && not videodirs.isEmpty()) {
         videodir = QUrl::fromLocalFile(videodirs[0]);
     }
-    auto filename =
-        QFileDialog::getOpenFileName(this, tr("open video file"), videodir.toLocalFile(), tr("Videos (*.mp4)"));
-    auto filepath = QUrl::fromLocalFile(filename);
-    if (not filepath.isValid()) {
+    auto filenames =
+        QFileDialog::getOpenFileNames(this, tr("open video file"), videodir.toLocalFile(), tr("Videos (*.mp4)"));
+    if (filenames.isEmpty()) {
         QMessageBox::warning(nullptr, tr("warning"), tr("no file was selected"));
         return;
     }
-    source_path_ = filepath;
-    QDir filedir{filepath.toLocalFile()};
+    for (const auto &filename : filenames) {
+        current_unregistered_input_paths_.push_back(QUrl::fromLocalFile(filename));
+    }
+    QDir filedir{current_unregistered_input_paths_[0].toLocalFile()};
     filedir.cdUp();
     write_video_dir_cache_(QUrl::fromLocalFile(filedir.path()));
-    ui_->label_source_path->setText(source_path_.toLocalFile());
     ui_->pushButton_save->setEnabled(true);
+    ui_->pushButton_remove_item->setEnabled(true);
     process_ = new ProcessWidget(true);
     process_->setAttribute(Qt::WA_DeleteOnClose, true);
     create_savefile_name_();
 }
 
 void MainWindow::select_output_dir_() {
+    TRACE
     auto output_dir = QFileDialog::getExistingDirectory(this, tr("result directory"), ui_->lineEdit_output_dir->text());
     if (not QDir{output_dir}.exists(output_dir)) {
         QMessageBox::warning(nullptr, tr("no existing dir"), tr("no existing directory was selected"));
@@ -231,7 +231,11 @@ class OnTrue {
 }  // namespace impl_
 void MainWindow::create_savefile_name_() {
     TRACE
-    QString filename = source_path_.fileName();
+    auto current_input_path = current_unregistered_input_paths_.front();
+    auto new_item = new QListWidgetItem(current_input_path.toLocalFile());
+    new_item->setData(static_cast<int>(VideoDataRole::preset), settings_->value("default_preset", tr("custom")));
+    ui_->listWidget_files->addItem(new_item);
+    QString filename = current_input_path.fileName();
     if (settings_->contains("savefile_name_plugin") && settings_->value("savefile_name_plugin") != NO_PLUGIN) {
         process_->start(
             PYTHON,
@@ -246,27 +250,32 @@ void MainWindow::create_savefile_name_() {
 }
 void MainWindow::register_savefile_name_() {
     TRACE
-    QString default_savefile_name = source_path_.fileName();
+    auto current_input_path = current_unregistered_input_paths_.front();
+    QString default_savefile_name = current_input_path.fileName();
     if (settings_->contains("savefile_name_plugin") && settings_->value("savefile_name_plugin") != NO_PLUGIN) {
         default_savefile_name = process_->get_stdout();
     }
-    QDir source_dir{source_path_.toLocalFile()};
+    QDir source_dir{current_input_path.toLocalFile()};
     source_dir.cdUp();
-    ui_->lineEdit_output_dir->setText(source_dir.absolutePath());
-    ui_->lineEdit_output_filename->setText(default_savefile_name);
+    auto current_index = ui_->listWidget_files->count() - 1;
+    ui_->listWidget_files->item(current_index)
+        ->setData(static_cast<int>(VideoDataRole::output_path),
+                  QUrl::fromLocalFile(source_dir.filePath(default_savefile_name)));
     probe_for_video_info_();
 }
 void MainWindow::probe_for_video_info_() {
     TRACE
+    auto current_input_path = current_unregistered_input_paths_.front();
     QStringList ffprobe_arguments{"-hide_banner", "-show_streams", "-show_format", "-of", "json", "-v", "quiet"};
-    QString filename = source_path_.toLocalFile();
-    process_->start("ffprobe", ffprobe_arguments + QStringList{filename}, true);
+    QString filename = current_input_path.toLocalFile();
+    process_->start("ffprobe", ffprobe_arguments + QStringList{filename}, false);
     connect(process_, &ProcessWidget::finished, this, impl_::OnTrue([=] { this->register_video_info_(); }),
             impl_::ONESHOT_AUTO_CONNECTION);
 }
 void MainWindow::register_video_info_() {
     TRACE
-    QString filepath = source_path_.toLocalFile();
+    auto current_input_path = current_unregistered_input_paths_.front();
+    QString filepath = current_input_path.toLocalFile();
     QRegularExpression fraction_pattern(R"((\d+)/(\d+))");
     QJsonParseError err;
     auto prove_result = QJsonDocument::fromJson(process_->get_stdout().toUtf8(), &err);
@@ -282,7 +291,10 @@ void MainWindow::register_video_info_() {
         QMessageBox::critical(this, tr("ffprobe parse error"), tr("failed to parse duration [%1]").arg(duration_str));
         return;
     }
-    source_length_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(duration));
+    auto current_index = ui_->listWidget_files->count() - 1;
+    auto source_length = QTime::fromMSecsSinceStartOfDay(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::duration<double>(duration)).count());
+    ui_->listWidget_files->item(current_index)->setData(static_cast<int>(VideoDataRole::length), source_length);
     auto info = concat::VideoInfo::create_input_info();
     bool video_found = false, audio_found = false;
     for (auto stream_value : prove_result.object()["streams"].toArray()) {
@@ -320,11 +332,25 @@ void MainWindow::register_video_info_() {
         QMessageBox::critical(this, tr("ffprobe parse error"), tr("audio stream was not found"));
         return;
     }
-    source_video_info_ = info;
-    if (current_preset_ == tr("custom")) {
-        cache_ = ui_->videoInfoWidget->info();
+    ui_->listWidget_files->item(current_index)
+        ->setData(static_cast<double>(VideoDataRole::source_video_info), QVariant::fromValue(info));
+    auto default_preset_name = settings_->value("default_preset", tr("custom")).toString();
+    auto initial_output_info = concat::VideoInfo();
+    if (default_preset_name != tr("custom")) {
+        initial_output_info =
+            concat::VideoInfo::from_toml(presets_["VERSION"].as_integer(), presets_[default_preset_name.toStdString()]);
     }
-    change_preset_(ui_->comboBox_preset->currentText());
+    initial_output_info.bound_input_info(retrieve_input_info(info));
+    ui_->listWidget_files->item(current_index)
+        ->setData(static_cast<double>(VideoDataRole::output_video_info), QVariant::fromValue(initial_output_info));
+    current_unregistered_input_paths_.pop_front();
+    if (not current_unregistered_input_paths_.isEmpty()) {
+        create_savefile_name_();
+    } else {
+        process_->close();
+        ui_->listWidget_files->setCurrentRow(0);
+        update_output_infos_();
+    }
 }
 namespace impl_ {
 int decode_ffmpeg(QStringView, QStringView new_stderr) {
@@ -346,34 +372,38 @@ int decode_ffmpeg(QStringView, QStringView new_stderr) {
         .count();
 }
 }  // namespace impl_
-void MainWindow::re_encode_videos_() {
+void MainWindow::re_encode_video_() {
     TRACE
     bool resolution_changed = false, audio_codec_changed = false, video_codec_changed = false;
-    auto output_video_info = ui_->videoInfoWidget->info();
+    auto current_item = ui_->listWidget_files->item(encoding_loop_current_index_);
+    auto output_video_info =
+        current_item->data(static_cast<int>(VideoDataRole::output_video_info)).value<concat::VideoInfo>();
+    auto source_video_info =
+        current_item->data(static_cast<int>(VideoDataRole::source_video_info)).value<concat::VideoInfo>();
     output_video_info.resolve_reference();
     VIDEO_RE_ENCODER_TRY_VARIANT {
-        if (std::get<QSize>(output_video_info.resolution) != std::get<QSize>(source_video_info_.resolution)) {
+        if (std::get<QSize>(output_video_info.resolution) != std::get<QSize>(source_video_info.resolution)) {
             resolution_changed = true;
         }
     }
-    VIDEO_RE_ENCODER_CATCH_VARIANT_2(output_video_info.resolution, source_video_info_.resolution);
+    VIDEO_RE_ENCODER_CATCH_VARIANT_2(output_video_info.resolution, source_video_info.resolution);
     VIDEO_RE_ENCODER_TRY_VARIANT {
-        if (std::get<QString>(output_video_info.audio_codec) != std::get<QString>(source_video_info_.audio_codec)) {
+        if (std::get<QString>(output_video_info.audio_codec) != std::get<QString>(source_video_info.audio_codec)) {
             audio_codec_changed = true;
         }
     }
-    VIDEO_RE_ENCODER_CATCH_VARIANT_2(output_video_info.audio_codec, source_video_info_.audio_codec);
+    VIDEO_RE_ENCODER_CATCH_VARIANT_2(output_video_info.audio_codec, source_video_info.audio_codec);
     VIDEO_RE_ENCODER_TRY_VARIANT {
-        if (std::get<QString>(output_video_info.video_codec) != std::get<QString>(source_video_info_.video_codec)) {
+        if (std::get<QString>(output_video_info.video_codec) != std::get<QString>(source_video_info.video_codec)) {
             video_codec_changed = true;
         }
     }
-    VIDEO_RE_ENCODER_CATCH_VARIANT_2(output_video_info.video_codec, source_video_info_.video_codec);
+    VIDEO_RE_ENCODER_CATCH_VARIANT_2(output_video_info.video_codec, source_video_info.video_codec);
     QStringList arguments;
     VIDEO_RE_ENCODER_TRY_VARIANT {
         // clang-format off
         arguments << output_video_info.input_file_args
-                  << "-i" << source_path_.toLocalFile()
+                  << "-i" << current_item->text()
                   << "-c:a" << (audio_codec_changed? std::get<QString>(output_video_info.audio_codec) : "copy")
                   << "-c:v" << (video_codec_changed? std::get<QString>(output_video_info.video_codec) : "copy");
         // clang-format on
@@ -387,17 +417,24 @@ void MainWindow::re_encode_videos_() {
     }
     VIDEO_RE_ENCODER_CATCH_VARIANT(output_video_info.resolution);
     arguments += output_video_info.encoding_args;
-    arguments << output_path_.toLocalFile();
+    arguments << current_item->data(static_cast<int>(VideoDataRole::output_path)).toUrl().toLocalFile();
     using VT = ProcessWidget::ProgressParams::ValueType;
     auto format = [](VT value) {
         return QTime::fromMSecsSinceStartOfDay(value).toString(tr("hh'h'mm'm'ss's'zzz'ms'"));
     };
-    process_->start("ffmpeg", arguments, true,
-                    {0, source_length_.count(), impl_::decode_ffmpeg, [format](VT, VT current, VT total) {
+    qDebug() << __FUNCTION__ << arguments;
+    process_->start("ffmpeg", arguments, encoding_loop_current_index_ == ui_->listWidget_files->count() - 1,
+                    {0, current_item->data(static_cast<int>(VideoDataRole::length)).toTime().msecsSinceStartOfDay(),
+                     impl_::decode_ffmpeg, [format](VT, VT current, VT total) {
                          return QStringLiteral("%1/%2").arg(format(current)).arg(format(total));
                      }});
-    connect(process_, &ProcessWidget::finished, this, &MainWindow::cleanup_after_saving_,
-            impl_::ONESHOT_AUTO_CONNECTION);
+    connect(process_, &ProcessWidget::finished, this, &MainWindow::check_loop_state_, impl_::ONESHOT_AUTO_CONNECTION);
+}
+void MainWindow::check_loop_state_() {
+    TRACE
+    if (++encoding_loop_current_index_ < ui_->listWidget_files->count()) {
+        re_encode_video_();
+    }
 }
 void MainWindow::cleanup_after_saving_() { TRACE }
 void MainWindow::start_saving_() {
@@ -406,17 +443,56 @@ void MainWindow::start_saving_() {
     process_->setWindowModality(Qt::WindowModal);
     process_->setAttribute(Qt::WA_DeleteOnClose, true);
     process_->show();
-    output_path_ =
-        QUrl::fromLocalFile(QDir{ui_->lineEdit_output_dir->text()}.filePath(ui_->lineEdit_output_filename->text()));
-    if (QFile{output_path_.toLocalFile()}.exists()) {
-        QMessageBox::warning(nullptr, tr("existing file"),
-                             tr("file '%1' already exists. This software currently doesn't support overwriting file.")
-                                 .arg(output_path_.toLocalFile()));
-        process_->close();
+    for (auto i = 0; i < ui_->listWidget_files->count(); i++) {
+        auto output_path = ui_->listWidget_files->item(i)->data(static_cast<int>(VideoDataRole::output_path)).toUrl();
+        if (QFile{output_path.toLocalFile()}.exists()) {
+            QMessageBox::warning(
+                nullptr, tr("existing file"),
+                tr("file '%1' already exists. This software currently doesn't support overwriting file.")
+                    .arg(output_path.toLocalFile()));
+            process_->close();
+            return;
+        }
+    }
+    encoding_loop_current_index_ = 0;
+    re_encode_video_();
+}
+void MainWindow::update_output_infos_() {
+    TRACE
+    auto new_item = ui_->listWidget_files->currentItem();
+    if (new_item == nullptr) {
+        qDebug() << "new_item is nullptr";
         return;
     }
-
-    re_encode_videos_();
+    ui_->videoInfoWidget->set_infos(
+        new_item->data(static_cast<int>(VideoDataRole::output_video_info)).value<concat::VideoInfo>(),
+        retrieve_input_info(
+            new_item->data(static_cast<int>(VideoDataRole::source_video_info)).value<concat::VideoInfo>()));
+    change_preset_(new_item->data(static_cast<int>(VideoDataRole::preset)).toString());
+    auto output_path = new_item->data(static_cast<int>(VideoDataRole::output_path)).toUrl();
+    auto output_dir = QDir{output_path.toLocalFile()};
+    output_dir.cdUp();
+    ui_->lineEdit_output_dir->setText(output_dir.absolutePath());
+    ui_->lineEdit_output_filename->setText(QFileInfo{output_path.toLocalFile()}.fileName());
+    ui_->timeEdit_item_length->setTime(new_item->data(static_cast<int>(VideoDataRole::length)).toTime());
+    update_total_length_();
+}
+void MainWindow::update_total_length_() {
+    TRACE
+    int total_length = 0;
+    for (auto i = 0; i < ui_->listWidget_files->count(); i++) {
+        total_length += ui_->listWidget_files->item(i)
+                            ->data(static_cast<int>(VideoDataRole::length))
+                            .toTime()
+                            .msecsSinceStartOfDay();
+    }
+    ui_->timeEdit->setTime(QTime::fromMSecsSinceStartOfDay(total_length));
+}
+void MainWindow::register_output_path_() {
+    TRACE
+    auto path =
+        QUrl::fromLocalFile(QDir{ui_->lineEdit_output_dir->text()}.filePath(ui_->lineEdit_output_filename->text()));
+    ui_->listWidget_files->currentItem()->setData(static_cast<int>(VideoDataRole::output_path), path);
 }
 void MainWindow::save_result_() {
     TRACE
@@ -459,6 +535,7 @@ void MainWindow::select_savefile_name_plugin_() {
 }
 
 void MainWindow::select_default_preset_() {
+    TRACE
     QStringList presets(tr("custom"));
     for (const auto &[key, value] : presets_.as_table()) {
         if (key == "VERSION") {
@@ -478,22 +555,59 @@ void MainWindow::select_default_preset_() {
 }
 
 void MainWindow::change_preset_(QString name) {
+    TRACE
+    if (ui_->listWidget_files->count() == 0) {
+        return;
+    }
+    auto current_item = ui_->listWidget_files->currentItem();
+    auto source_video_info =
+        current_item->data(static_cast<int>(VideoDataRole::source_video_info)).value<concat::VideoInfo>();
+    auto current_output_info =
+        current_item->data(static_cast<int>(VideoDataRole::output_video_info)).value<concat::VideoInfo>();
+    auto current_preset = current_item->data(static_cast<int>(VideoDataRole::preset)).toString();
     if (name == tr("custom")) {
         ui_->videoInfoWidget->setEnabled(true);
-        ui_->videoInfoWidget->set_infos(cache_, retrieve_input_info(source_video_info_));
+        ui_->videoInfoWidget->set_infos(current_output_info, retrieve_input_info(source_video_info));
     } else {
         ui_->videoInfoWidget->setEnabled(false);
-        if (current_preset_ == tr("custom")) {
-            cache_ = ui_->videoInfoWidget->info();
+        if (current_preset == tr("custom")) {
+            current_item->setData(static_cast<int>(VideoDataRole::output_video_info),
+                                  QVariant::fromValue(ui_->videoInfoWidget->info()));
         }
         try {
             ui_->videoInfoWidget->set_infos(
                 concat::VideoInfo::from_toml(presets_["VERSION"].as_integer(), presets_[name.toStdString()]),
-                retrieve_input_info(source_video_info_));
+                retrieve_input_info(source_video_info));
         } catch (std::exception &e) {
             QMessageBox::warning(nullptr, tr("warning"),
                                  tr("failed to load preset '%1' info: \n%2").arg(name).arg(e.what()));
         }
     }
-    current_preset_ = name;
+    current_item->setData(static_cast<int>(VideoDataRole::preset), name);
+}
+void MainWindow::register_user_video_info_(concat::VideoInfo new_value) {
+    TRACE
+    ui_->listWidget_files->currentItem()->setData(static_cast<int>(VideoDataRole::output_video_info),
+                                                  QVariant::fromValue(new_value));
+}
+void MainWindow::register_user_output_path_() {
+    TRACE
+    auto new_value =
+        QUrl::fromLocalFile(QDir{ui_->lineEdit_output_dir->text()}.filePath(ui_->lineEdit_output_filename->text()));
+    ui_->listWidget_files->currentItem()->setData(static_cast<int>(VideoDataRole::output_path), new_value);
+}
+void MainWindow::sort_files_() {
+    TRACE
+    QVector<QListWidgetItem *> items;
+    while (ui_->listWidget_files->count() != 0) {
+        items.push_back(ui_->listWidget_files->takeItem(0));
+    }
+    std::sort(items.begin(), items.end(), [](QListWidgetItem *one, QListWidgetItem *the_other) {
+        auto length_role = static_cast<int>(MainWindow::VideoDataRole::length);
+        return one->data(length_role).toTime() < the_other->data(length_role).toTime();
+    });
+    for (auto item : items) {
+        ui_->listWidget_files->addItem(item);
+    }
+    ui_->listWidget_files->setCurrentRow(0);
 }

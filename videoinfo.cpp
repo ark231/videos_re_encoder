@@ -1,4 +1,8 @@
 #include "videoinfo.hpp"
+
+#include <QTextStream>
+#include <QtDebug>
+#include <sstream>
 namespace concat {
 void VideoInfo::resolve_reference() {
     if (std::holds_alternative<SameAsHighest<QSize>>(this->resolution)) {
@@ -65,5 +69,23 @@ VideoInfo VideoInfo::from_toml(int version, toml::value& toml_value) {
         }
     }
     return result;
+}
+void VideoInfo::bound_input_info(const VideoInfo& input_info) {
+    if (std::holds_alternative<SameAsHighest<QSize>>(resolution)) {
+        resolution = SameAsHighest<QSize>{std::get<ValueRange<QSize>>(input_info.resolution).highest};
+    } else if (std::holds_alternative<SameAsLowest<QSize>>(resolution)) {
+        resolution = SameAsLowest<QSize>{std::get<ValueRange<QSize>>(input_info.resolution).lowest};
+    }
+    if (std::holds_alternative<SameAsHighest<double>>(framerate)) {
+        framerate = SameAsHighest<double>{std::get<ValueRange<double>>(input_info.framerate).highest};
+    } else if (std::holds_alternative<SameAsLowest<double>>(framerate)) {
+        framerate = SameAsLowest<double>{std::get<ValueRange<double>>(input_info.framerate).lowest};
+    }
+    if (std::holds_alternative<SameAsInput<QString>>(audio_codec)) {
+        audio_codec = SameAsInput<QString>{*std::get<QSet<QString>>(input_info.audio_codec).constBegin()};
+    }
+    if (std::holds_alternative<SameAsInput<QString>>(video_codec)) {
+        video_codec = SameAsInput<QString>{*std::get<QSet<QString>>(input_info.video_codec).constBegin()};
+    }
 }
 }  // namespace concat

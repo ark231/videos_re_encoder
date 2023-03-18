@@ -20,6 +20,8 @@ class VideoInfoWidget : public QWidget {
     ~VideoInfoWidget();
     void set_infos(const concat::VideoInfo &initial_values, const concat::VideoInfo &input_info);
     concat::VideoInfo info() const;
+   signals:
+    void info_changed(concat::VideoInfo new_value);
 
    private:
     Ui::VideoInfoWidget *ui_;
@@ -37,6 +39,8 @@ class VideoInfoWidget : public QWidget {
     void update_input_audio_codec_(QString text);
     void update_input_video_codec_(QString text);
     void update_everything_();
+
+    void emit_info_changed_();
 };
 
 #endif  // VIDEOINFOWIDGET_HPP

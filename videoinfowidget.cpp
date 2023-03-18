@@ -24,6 +24,24 @@ VideoInfoWidget::VideoInfoWidget(QWidget *parent)
             [this](const QString &new_string) { this->cache_.audio_codec = new_string; });
     connect(ui_->lineEdit_video_codec, &QLineEdit::textEdited,
             [this](const QString &new_string) { this->cache_.video_codec = new_string; });
+
+    connect(ui_->comboBox_resolution, &QComboBox::activated, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->spinBox_height, &QSpinBox::valueChanged, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->spinBox_width, &QSpinBox::valueChanged, this, &VideoInfoWidget::emit_info_changed_);
+
+    connect(ui_->comboBox_framerate, &QComboBox::activated, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->doubleSpinBox_framerate, &QDoubleSpinBox::valueChanged, this, &VideoInfoWidget::emit_info_changed_);
+
+    connect(ui_->comboBox_audio_codec, &QComboBox::activated, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->comboBox_input_audio_codec, &QComboBox::activated, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->lineEdit_audio_codec, &QLineEdit::textEdited, this, &VideoInfoWidget::emit_info_changed_);
+
+    connect(ui_->comboBox_video_codec, &QComboBox::activated, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->comboBox_input_video_codec, &QComboBox::activated, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->lineEdit_video_codec, &QLineEdit::textEdited, this, &VideoInfoWidget::emit_info_changed_);
+
+    connect(ui_->listWidget_args, &QListWidget::currentTextChanged, this, &VideoInfoWidget::emit_info_changed_);
+    connect(ui_->listWidget_input_args, &QListWidget::currentTextChanged, this, &VideoInfoWidget::emit_info_changed_);
 }
 
 VideoInfoWidget::~VideoInfoWidget() { delete ui_; }
@@ -260,3 +278,4 @@ void VideoInfoWidget::update_everything_() {
     update_input_audio_codec_(ui_->comboBox_audio_codec->currentText());
     update_input_video_codec_(ui_->comboBox_video_codec->currentText());
 }
+void VideoInfoWidget::emit_info_changed_() { emit info_changed(this->info()); }

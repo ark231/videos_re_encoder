@@ -44,6 +44,7 @@ struct VideoInfo {
     static VideoInfo create_input_info() {
         return {ValueRange<QSize>{}, ValueRange<double>{}, true, QSet<QString>{}, QSet<QString>{}};
     }
+    void bound_input_info(const VideoInfo& input_info);
     void resolve_reference();
 };
 }  // namespace concat
