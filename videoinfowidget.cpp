@@ -198,6 +198,7 @@ void VideoInfoWidget::set_infos(const concat::VideoInfo &initial_values, const c
     VIDEO_RE_ENCODER_CATCH_VARIANT(initial_values.audio_codec)
     ui_->comboBox_audio_codec->setCurrentText(initial_text);
     VIDEO_RE_ENCODER_TRY_VARIANT {
+        ui_->comboBox_input_audio_codec->clear();
         for (const auto &item : std::get<QSet<QString>>(input_info.audio_codec)) {
             ui_->comboBox_input_audio_codec->addItem(item);
         }
@@ -215,6 +216,7 @@ void VideoInfoWidget::set_infos(const concat::VideoInfo &initial_values, const c
     VIDEO_RE_ENCODER_CATCH_VARIANT(initial_values.video_codec)
     ui_->comboBox_video_codec->setCurrentText(initial_text);
     VIDEO_RE_ENCODER_TRY_VARIANT {
+        ui_->comboBox_input_video_codec->clear();
         for (const auto &item : std::get<QSet<QString>>(input_info.video_codec)) {
             ui_->comboBox_input_video_codec->addItem(item);
         }
