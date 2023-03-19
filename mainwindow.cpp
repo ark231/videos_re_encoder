@@ -425,9 +425,11 @@ void MainWindow::re_encode_video_() {
     qDebug() << __FUNCTION__ << arguments;
     process_->start("ffmpeg", arguments, encoding_loop_current_index_ == ui_->listWidget_files->count() - 1,
                     {0, current_item->data(static_cast<int>(VideoDataRole::length)).toTime().msecsSinceStartOfDay(),
-                     impl_::decode_ffmpeg, [format](VT, VT current, VT total) {
+                     impl_::decode_ffmpeg,
+                     [format](VT, VT current, VT total) {
                          return QStringLiteral("%1/%2").arg(format(current)).arg(format(total));
-                     }});
+                     }},
+                    current_item->data(static_cast<int>(VideoDataRole::length)).toTime());
     connect(process_, &ProcessWidget::finished, this, &MainWindow::check_loop_state_, impl_::ONESHOT_AUTO_CONNECTION);
 }
 void MainWindow::check_loop_state_() {
@@ -439,7 +441,14 @@ void MainWindow::check_loop_state_() {
 void MainWindow::cleanup_after_saving_() { TRACE }
 void MainWindow::start_saving_() {
     TRACE
-    process_ = new ProcessWidget(false, ui_->listWidget_files->count(), this,
+    int total_length = 0;
+    for (auto i = 0; i < ui_->listWidget_files->count(); i++) {
+        total_length += ui_->listWidget_files->item(i)
+                            ->data(static_cast<int>(VideoDataRole::length))
+                            .toTime()
+                            .msecsSinceStartOfDay();
+    }
+    process_ = new ProcessWidget(false, QTime::fromMSecsSinceStartOfDay(total_length), this,
                                  Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinMaxButtonsHint);
     process_->setWindowModality(Qt::WindowModal);
     process_->setAttribute(Qt::WA_DeleteOnClose, true);

@@ -8,13 +8,21 @@
 
 #include "ui_processwidget.h"
 
-ProcessWidget::ProcessWidget(bool close_on_final, int batch_count, QWidget *parent, Qt::WindowFlags flags)
-    : QWidget(parent, flags), ui_(new Ui::ProcessWidget), close_on_final_(close_on_final), batch_count_(batch_count) {
+namespace {
+constexpr char TIME_FORMAT[] = "H'h'mm'm'ss's'";
+}
+
+ProcessWidget::ProcessWidget(bool close_on_final, QTime batch_total_length, QWidget *parent, Qt::WindowFlags flags)
+    : QWidget(parent, flags),
+      ui_(new Ui::ProcessWidget),
+      close_on_final_(close_on_final),
+      batch_total_length_(batch_total_length) {
     ui_->setupUi(this);
     ui_->label_status->setText(tr("Executing nothing."));
-    ui_->progressBar_batch->setMaximum(batch_count);
-    ui_->label_batch_progress->setText(tr("%1/%2 finished").arg(0).arg(batch_count));
-    if (batch_count < 2) {
+    ui_->progressBar_batch->setMaximum(batch_total_length.msecsSinceStartOfDay());
+    ui_->label_batch_progress->setText(
+        tr("%1/%2 finished").arg("0h00m00s").arg(batch_total_length.toString(TIME_FORMAT)));
+    if (not batch_total_length.isValid()) {
         ui_->label_batch_progress->hide();
         ui_->progressBar_batch->hide();
     }
@@ -28,7 +36,7 @@ ProcessWidget::~ProcessWidget() {
 }
 
 void ProcessWidget::start(const QString &command, const QStringList &arguments, bool is_final,
-                          ProcessWidget::ProgressParams progress_params) {
+                          ProcessWidget::ProgressParams progress_params, QTime length) {
     if (process_ != nullptr) {
         process_->deleteLater();
     }
@@ -109,6 +117,9 @@ void ProcessWidget::start(const QString &command, const QStringList &arguments, 
     ui_->label_status->setText(tr("Starting %1").arg(command));
     disable_closing_();
 
+    length_finished_processes_ = QTime::fromMSecsSinceStartOfDay(length_finished_processes_.msecsSinceStartOfDay() +
+                                                                 length.msecsSinceStartOfDay());
+
     emit start_process(command, arguments, QIODeviceBase::ReadWrite);
 }
 QString ProcessWidget::get_stdout(int index) {
@@ -127,8 +138,10 @@ void ProcessWidget::update_label_on_start_() {
     ui_->label_status->setText(tr("Executing %1 (pid=%2)").arg(process_->program()).arg(process_->processId()));
 }
 void ProcessWidget::update_label_on_finish_(int exit_code, QProcess::ExitStatus exit_status) {
-    ui_->progressBar_batch->setValue(++num_finished_processes_);
-    ui_->label_batch_progress->setText(tr("%1/%2 finished").arg(num_finished_processes_).arg(batch_count_));
+    ui_->progressBar_batch->setValue(length_finished_processes_.msecsSinceStartOfDay());
+    ui_->label_batch_progress->setText(tr("%1/%2 finished")
+                                           .arg(length_finished_processes_.toString(TIME_FORMAT))
+                                           .arg(batch_total_length_.toString(TIME_FORMAT)));
     switch (exit_status) {
         case QProcess::NormalExit:
             ui_->label_status->setText(
